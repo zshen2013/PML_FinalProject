@@ -1,0 +1,85 @@
+---
+title: "Practical Machine Learning Final Project"
+author: "Zijun SHEN"
+date: "May 23, 2015"
+output: html_document
+---
+##Introduction
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+###Preprocessing
+```{r}
+library(caret);library(rpart);library(rpart.plot);library(randomForest);library(rattle)
+```
+
+###Data Management
+
+```{r}
+
+## Loading the data
+train_data <- read.csv(file="~/Desktop/pml-training.csv", head = T); test_data <- read.csv(file="~/Desktop/pml-testing.csv", head = T);
+dim(train_data);dim(test_data)
+```
+Note that Training data includes 19622 observations and 160 variables; Testing data includes 20 observations and 160 variables.
+
+```{r}
+# Data Treatment
+## Exclude the missing data 
+train_data <- train_data[, colSums(is.na(train_data)) == 0] 
+test_data <- test_data[, colSums(is.na(test_data)) == 0]
+## Exclude the irrelevant predictors
+classe <- train_data$classe
+trainR <- grepl("^X|timestamp|window", names(train_data))
+train_data <- train_data[, !trainR]
+train_f <- train_data[, sapply(train_data, is.numeric)]
+train_f$classe <- classe
+testR <- grepl("^X|timestamp|window", names(test_data))
+test_data <- test_data[, !testR]
+test_f <- test_data[, sapply(test_data, is.numeric)]
+```
+Note that after data treatment procedure, there are 53 variables in the training set and testing set.
+###Data Partition
+Considering that we may choose to apply cross-validation to improve model, the partition step is necessary. Hence, the training set is sliced into two parts: modeling training part(70%) and validation set part(30%).
+```{r}
+set.seed(2015);
+dat_tr <- createDataPartition(train_f$classe, p=0.70, list=F)
+trainData <- train_f[dat_tr, ]
+testData <- train_f[-dat_tr, ]
+```
+###Model Building
+Considering the obvious advantage of accuracy, I chose random forest to build the model.At the same time, we used the 6-fold cross validation to enhence the model.
+```{r}
+ctrlRF <- trainControl(method="cv", 6)
+modelRf <- train(classe ~ ., data=trainData, method="rf", trControl=ctrlRF, ntree=250)
+modelRf
+
+```
+### Model Evaluation
+```{r}
+predictRf <- predict(modelRf, testData)
+confusionMatrix(testData$classe, predictRf)
+(accuracy <- postResample(predictRf, testData$classe))
+(out_of_samp_err <- 1 - as.numeric(confusionMatrix(testData$classe, predictRf)$overall[1]))
+```
+Hence, from the R process above, it is shown that the accuracy of the random forest model is 99.34%, and the out-of-sample error is 0.66%
+
+### Model Prediction
+
+```{r}
+(prediction <- predict(modelRf, test_f[, -length(names(test_f))]))
+
+```
+Note that the problem_id is removed and the prediction is shown as above.And we can see that the prediction should be B A B A A E D B A A B C B A E E A B B B
+
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(prediction)
+```
+
